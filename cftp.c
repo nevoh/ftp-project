@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 
 /* Socket API headers */
 #include <sys/socket.h>
@@ -28,15 +29,34 @@ void send_file(FILE *fp, int sockfd)
         bzero(content, SIZE);
     }
 }
+void list_files(int fd){
+	DIR *d;
+  	struct dirent *dir;
+  	d = opendir(".");
+  	if (d)
+	{
+    	while ((dir = readdir(d)) != NULL)
+	{
+	if(dir->d_type == DT_REG){
+      	send(fd, dir->d_name, strlen(dir->d_name), 0);
+	send(fd, "\n", 2, 0);
+}
+    	}
+    closedir(d);
+  }
+}
 
 void do_job(int fd) {
 int length,rcnt, condition;
 char recvbuf[DEFAULT_BUFLEN],bmsg[DEFAULT_BUFLEN];
 int  recvbuflen = DEFAULT_BUFLEN;
 char welcomemsg[DEFAULT_BUFLEN] = "Welcome to Neville's server'\n";
-char cmd[DEFAULT_BUFLEN] = "GET";
+char* errormsg;
+char cmd[DEFAULT_BUFLEN] = "GET", cmdLIST[DEFAULT_BUFLEN] = "LIST";
 FILE *fp;
 char *filename = "file.txt";
+
+
 
     send(fd, welcomemsg, sizeof(welcomemsg), 0);
      do {
@@ -52,11 +72,15 @@ char *filename = "file.txt";
 	    char recvfilename[DEFAULT_BUFLEN];
 	    strncpy(recvcmd, recvstring, count);
 	    strncpy(recvfilename, (recvstring+count+1), strlen(recvstring)-(count+2));
-        if (rcnt > 0 && (*recvcmd == *cmd ) ) {
+	if (rcnt > 0 && (*recvcmd == *cmdLIST)){
+		list_files(fd);
+}
+        else if (rcnt > 0 && (*recvcmd == *cmd ) ) {
         	fp = fopen(recvfilename, "r");
 		    if (fp == NULL)
 		    {
-			printf("%d", strlen(recvstring));
+			errormsg = "404 File not found";
+			send(fd, errormsg, strlen(errormsg), 0);
 		        perror("!! Error in reading file.");
 		        exit(1);
 		    }
