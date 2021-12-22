@@ -14,6 +14,17 @@
 #define PORT 2672
 #define SIZE 1024
 
+char *safe_strcpy(char *dest, size_t size, char *src) {
+      if (size > 0) {
+          size_t i;
+          for (i = 0; i < size  && src[i]; i++) {
+               dest[i] = src[i];
+          }
+          dest[i] = '\0';
+      }
+      return dest;
+  }
+
 //function for sending requested file contents to client
 void send_file(FILE *fp, int sockfd)
 {
@@ -49,42 +60,66 @@ void list_files(int fd){
 void do_job(int fd) {
 int length,rcnt, condition;
 char recvbuf[DEFAULT_BUFLEN],bmsg[DEFAULT_BUFLEN];
-int  recvbuflen = DEFAULT_BUFLEN;
+int  recvbuflen = DEFAULT_BUFLEN, x;
 char welcomemsg[DEFAULT_BUFLEN] = "Welcome to Neville's server'\n";
 char* errormsg;
-char cmd[DEFAULT_BUFLEN] = "GET", cmdLIST[DEFAULT_BUFLEN] = "LIST";
 FILE *fp;
-char *filename = "file.txt";
+char username[DEFAULT_BUFLEN];
+char password[DEFAULT_BUFLEN];
+int access_value = 0;
 
 
-
-    send(fd, welcomemsg, sizeof(welcomemsg), 0);
+     send(fd, welcomemsg, sizeof(welcomemsg), 0);
      do {
         rcnt = recv(fd, recvbuf, recvbuflen, 0);
         char *recvstring =(char*)recvbuf;
-        int count = 0, i;
+        int count = 0, i=0;
 	    while (count < strlen(recvstring)){
 	        if(isspace(recvstring[count]))
 	        break;
 	        count++;
 	    }
-	    char recvcmd[DEFAULT_BUFLEN];
+	    char recvcmd[4], recvcmdGET[3];
 	    char recvfilename[DEFAULT_BUFLEN];
-	    strncpy(recvcmd, recvstring, count);
-	    strncpy(recvfilename, (recvstring+count+1), strlen(recvstring)-(count+2));
-	if (rcnt > 0 && (*recvcmd == *cmdLIST)){
-		list_files(fd);
+		safe_strcpy(recvcmd, count, recvstring);
+	    //strncpy(recvcmd, recvstring, count);
+	    //strncpy(recvcmdGET, recvstring, 3);
+		safe_strcpy(recvfilename, strlen(recvstring)-(count+2), recvstring+count+1);
+	    //strncpy(recvfilename, (recvstring+count+1), strlen(recvstring)-(count+2));
+
+while (i < strlen(recvfilename)){
+        if(isspace(recvfilename[i]))
+        break;
+        i++;
+    }
+safe_strcpy(username, i, recvfilename);
+safe_strcpy(password, strlen(recvfilename)-i, recvfilename+(i+1));
+
+if (rcnt > 0 && strcmp(username, "neville")==0 && strcmp(password, "1234")==0){
+		send(fd, "Access Granted", 14, 0);
+		access_value = 1;
 }
-        else if (rcnt > 0 && (*recvcmd == *cmd ) ) {
+
+else if (rcnt > 0 && strcmp(recvcmd, "LIST")==0 && access_value){
+		list_files(fd);
+		memset(recvcmd,0,strlen(recvcmd));
+}
+
+
+         else if (rcnt > 0 && strcmp(recvcmd,"GET")==0) {
         	fp = fopen(recvfilename, "r");
 		    if (fp == NULL)
 		    {
 			errormsg = "404 File not found";
+			printf(recvfilename);
 			send(fd, errormsg, strlen(errormsg), 0);
 		        perror("!! Error in reading file.");
 		        exit(1);
-		    }
+ 		    }
 		    send_file(fp, fd);
+		//memset(recvcmd,0,strlen(recvcmd));
+		//memset(recvfilename,0,strlen(recvfilename));
+
             if (rcnt < 0) {
                 printf("Send failed:\n");
                 close(fd);
@@ -92,14 +127,16 @@ char *filename = "file.txt";
             }
         }
         else if (rcnt == 0)
-            printf("Connection closing...\n");
+           printf("Connection closing...\n");
         else  {
             printf("Receive failed:\n");
+
             close(fd);
             break;
         }
     } while (rcnt > 0);
 }
+
 
 
 
