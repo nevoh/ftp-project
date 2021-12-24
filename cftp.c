@@ -56,20 +56,61 @@ void list_files(int fd){
     closedir(d);
   }
 }
+int is_authenticated(int fd){
+	char recvbuf[DEFAULT_BUFLEN];
+	int  recvbuflen = DEFAULT_BUFLEN, rcnt, access_value=0;
+	char username[DEFAULT_BUFLEN];
+	char password[DEFAULT_BUFLEN];
+	
+	rcnt = recv(fd, recvbuf, recvbuflen, 0);
+    char *recvstring =(char*)recvbuf;
+    int count = 0, i=0;
+    while (count < strlen(recvstring)){
+        if(isspace(recvstring[count]))
+        break;
+        count++;
+    }
+    char recvcmd[4];
+    char recvfilename[DEFAULT_BUFLEN];
+	safe_strcpy(recvcmd, count, recvstring);
+	safe_strcpy(recvfilename, strlen(recvstring)-(count+2), recvstring+count+1);
+
+while (i < strlen(recvfilename)){
+        if(isspace(recvfilename[i]))
+        break;
+        i++;
+    }
+safe_strcpy(username, i, recvfilename);
+safe_strcpy(password, strlen(recvfilename)-i, recvfilename+(i+1));
+if(rcnt > 0 &&strcmp(recvcmd, "USER")==0){
+	if (strcmp(username, "neville")==0 && strcmp(password, "1234")==0){
+		access_value = 1;
+	}
+}
+else if (rcnt < 0) {
+                printf("Send failed:\n");
+                close(fd);
+            }
+        else if (rcnt == 0)
+           printf("Connection closing...\n");
+        else  {
+            printf("Receive failed:\n");
+
+            close(fd);
+        }
+	
+	return access_value;
+}
 
 void do_job(int fd) {
 int length,rcnt, condition;
 char recvbuf[DEFAULT_BUFLEN],bmsg[DEFAULT_BUFLEN];
 int  recvbuflen = DEFAULT_BUFLEN, x;
-char welcomemsg[DEFAULT_BUFLEN] = "Welcome to Neville's server'\n";
-char* errormsg;
+char *errormsg;
 FILE *fp;
 char username[DEFAULT_BUFLEN];
 char password[DEFAULT_BUFLEN];
-int access_value = 0;
 
-
-     send(fd, welcomemsg, sizeof(welcomemsg), 0);
      do {
         rcnt = recv(fd, recvbuf, recvbuflen, 0);
         char *recvstring =(char*)recvbuf;
@@ -82,10 +123,7 @@ int access_value = 0;
 	    char recvcmd[4], recvcmdGET[3];
 	    char recvfilename[DEFAULT_BUFLEN];
 		safe_strcpy(recvcmd, count, recvstring);
-	    //strncpy(recvcmd, recvstring, count);
-	    //strncpy(recvcmdGET, recvstring, 3);
 		safe_strcpy(recvfilename, strlen(recvstring)-(count+2), recvstring+count+1);
-	    //strncpy(recvfilename, (recvstring+count+1), strlen(recvstring)-(count+2));
 
 while (i < strlen(recvfilename)){
         if(isspace(recvfilename[i]))
@@ -95,12 +133,9 @@ while (i < strlen(recvfilename)){
 safe_strcpy(username, i, recvfilename);
 safe_strcpy(password, strlen(recvfilename)-i, recvfilename+(i+1));
 
-if (rcnt > 0 && strcmp(username, "neville")==0 && strcmp(password, "1234")==0){
-		send(fd, "Access Granted", 14, 0);
-		access_value = 1;
-}
 
-else if (rcnt > 0 && strcmp(recvcmd, "LIST")==0 && access_value){
+
+ if (rcnt > 0 && strcmp(recvcmd, "LIST")==0){
 		list_files(fd);
 		memset(recvcmd,0,strlen(recvcmd));
 }
@@ -117,8 +152,6 @@ else if (rcnt > 0 && strcmp(recvcmd, "LIST")==0 && access_value){
 		        exit(1);
  		    }
 		    send_file(fp, fd);
-		//memset(recvcmd,0,strlen(recvcmd));
-		//memset(recvfilename,0,strlen(recvfilename));
 
             if (rcnt < 0) {
                 printf("Send failed:\n");
@@ -126,6 +159,7 @@ else if (rcnt > 0 && strcmp(recvcmd, "LIST")==0 && access_value){
                 break;
             }
         }
+
         else if (rcnt == 0)
            printf("Connection closing...\n");
         else  {
@@ -146,6 +180,7 @@ int server, client;
 struct sockaddr_in local_addr;
 struct sockaddr_in remote_addr;
 int length,fd,rcnt,optval;
+char welcomemsg[DEFAULT_BUFLEN] = "Welcome to Neville's server'\n";
 pid_t pid;
 
 /* Open socket descriptor */
@@ -198,7 +233,12 @@ while(1) {  // main accept() loop
     /* If fork create Child, take control over child and close on server side */
     if ((pid=fork()) == 0) {
         close(server);
-        do_job(fd);
+        send(fd, welcomemsg, sizeof(welcomemsg), 0);
+        if(is_authenticated(fd)){
+        	send(fd, "200 User neville Granted access\n", 32, 0);
+        	do_job(fd);
+    	}
+    	send(fd, "400 User not found", 18, 0);
         printf("Child finished their job!\n");
         close(fd);
         exit(0);
