@@ -19,7 +19,11 @@
 #define DEFAULT_BUFLEN 512
 #define PORT 2672
 #define SIZE 1024
-
+struct users
+{
+  char *file_username;
+  char *file_password;
+};
 char * safe_strcpy(char * dest, size_t size, char * src) {
   if (size > 0) {
     size_t i;
@@ -77,7 +81,7 @@ int is_authenticated(int fd) {
   int count = 0, i = 0;
 
   rcnt = recv(fd, recvbuf, recvbuflen, 0);
-
+  do{
   while (count < strlen(recvstring)) {
     if (isspace(recvstring[count]))
       break;
@@ -100,20 +104,40 @@ int is_authenticated(int fd) {
   safe_strcpy(password, strlen(recvfilename) - i, recvfilename + (i + 1));
 
   if (rcnt > 0 && strcmp(recvcmd, "USER") == 0) {
-    if (strcmp(username, "neville") == 0 && strcmp(password, "1234") == 0)
-      access_value = 1;
+  	FILE *fp = NULL;                                                            
+	int i = 0;
+	                                                                  
+	struct users var = {NULL, NULL};                                
+	char line[SIZE] = {0}, *ptr = NULL;                                               
+	if (NULL == (fp = fopen("users.txt","r")))                                   
+	{                                                                           
+	    perror("Error opening the file.\n");                              
+	    exit(EXIT_FAILURE);                                                     
+	}                                                     
+	var.file_username = malloc(SIZE);                                                 
+	var.file_password = malloc(SIZE);                                                     
+	while (EOF != fscanf(fp, "%s", line))                                       
+	{                                                                                               
+	    ptr = strtok(line, ":");                                                                                   
+	    var.file_username = ptr;                                                      
+	
+	    while (NULL != (ptr = strtok(NULL, ":")))                              
+	    {                                                                       
+	        i++;                                                                
+	        if(i == 1)                                                          
+	            var.file_password = ptr;                                                                                               
+	    }                                                                       
+	    i = 0;                        
+		if (strcmp(var.file_username, username) == 0 && strcmp(var.file_password, password) == 0)
+			access_value = 1;     
+	}             
 
   } else if (rcnt < 0) {
     printf("Send failed:\n");
     close(fd);
-  } else if (rcnt == 0)
-    printf("Connection closing...\n");
-  else {
-    printf("Receive failed:\n");
-    close(fd);
-  }
-
+  } 
   return access_value;
+}while( rcnt >0);
 }
 
 void do_job(int fd) {
@@ -146,15 +170,14 @@ void do_job(int fd) {
     } else if (rcnt > 0 && strcmp(recvcmd, "GET") == 0) {
       fp = fopen(recvfilename, "r");
       if (fp == NULL) {
-        strcpy(errormsg, "404  not found");
+        strcpy(errormsg, "404  not found\n");
         insertString(errormsg, recvfilename, 5);
-        printf(recvfilename);
         send(fd, errormsg, strlen(errormsg), 0);
-        perror("!! Error in reading file.");
-        exit(1);
       }
-      send_file(fp, fd);
-
+      else{
+      	send_file(fp, fd);
+      	memset(recvcmd, 0, strlen(recvcmd));
+	  }
       if (rcnt < 0) {
         printf("Send failed:\n");
         close(fd);
@@ -171,15 +194,18 @@ void do_job(int fd) {
         insertString(errormsg, recvfilename, 5);
         send(fd, errormsg, strlen(errormsg), 0);
 	  }
-      
-
-    } else if (rcnt == 0)
-      printf("Connection closing...\n");
-    else {
-      printf("Receive failed:\n");
-      close(fd);
-      break;
     }
+	else if (rcnt > 0 && strcmp(recvcmd, "QUIT") == 0){
+		strcpy(errormsg, "Goodbye!\n");
+        send(fd, errormsg, strlen(errormsg), 0);
+		close(fd);
+		printf("Child finished their job!\n");	
+	}
+    else{
+    	strcpy(errormsg, "404 Enter a valid command\n");
+        send(fd, errormsg, strlen(errormsg), 0);
+	}
+    	
   } while (rcnt > 0);
 }
 
@@ -220,7 +246,6 @@ int main() {
     perror("listen");
     exit(1);
   }
-
   printf("Concurrent  socket server now starting on port %d\n", PORT);
   printf("Wait for connection\n");
 
@@ -231,8 +256,6 @@ int main() {
           perror("Accept Problem!");
           continue;
     }
-
-
     printf("Server: got connection from %s\n", \
       inet_ntoa(remote_addr.sin_addr));
 
@@ -244,15 +267,11 @@ int main() {
         send(fd, "200 User neville Granted access\n", 32, 0);
         do_job(fd);
       } else
-        send(fd, "400 User not found", 18, 0);
-      printf("Child finished their job!\n");
-      close(fd);
+        send(fd, "400 User not found\n", 19, 0);
+//      printf("Child finished their job!\n");
+//      close(fd);
       exit(0);
     }
-
   }
-
-  // Final Cleanup
   close(server);
-
 }
