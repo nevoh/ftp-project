@@ -60,14 +60,25 @@ void send_file(FILE * fp, int sockfd) {
     bzero(content, SIZE);
   }
 }
+
+
 void list_files(int fd) {
   DIR * d;
+  FILE *fp;
+  int size;
+  char fsize[100], fdets[100];
   struct dirent * dir;
   d = opendir(".");
   if (d) {
     while ((dir = readdir(d)) != NULL) {
       if (dir -> d_type == DT_REG) {
-        send(fd, dir -> d_name, strlen(dir -> d_name), 0);
+      	fp = fopen(dir -> d_name, "r");
+		fseek(fp, 0L, SEEK_END);
+		size = ftell(fp);
+		sprintf(fsize, " %d",size);
+		strcpy(fdets, dir -> d_name);
+    	strcat(fdets, fsize);
+        send(fd, fdets, strlen(fdets), 0);
         send(fd, "\n", 2, 0);
       }
     }
