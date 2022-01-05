@@ -10,7 +10,8 @@
 
 #include<unistd.h>
 
-/* Socket API headers */ #include <sys/socket.h>
+/* Socket API headers */ 
+#include <sys/socket.h>
 
 #include <netinet/in.h>
 
@@ -24,6 +25,7 @@ struct users {
   char * file_username;
   char * file_password;
 };
+
 char * safe_strcpy(char * dest, size_t size, char * src) {
   if (size > 0) {
     size_t i;
@@ -54,13 +56,50 @@ void send_file(FILE * fp, int sockfd) {
 
   while (fgets(content, SIZE, fp) != NULL) {
     if (send(sockfd, content, sizeof(content), 0) == -1) {
-      perror("!! Error in sending file content");
+      perror("Error in sending file content");
       exit(1);
     }
     bzero(content, SIZE);
   }
 }
 
+void put_file(int sockfd, char *filename)
+{
+    int size, i; 
+    FILE *fp, *fp2;
+    char c, msg[100], fsize[100];
+    
+    fp = fopen(filename, "r");
+    if (fp == NULL)
+    {
+        strcpy(msg, "400 file not found\n");
+        send(sockfd, msg, strlen(msg), 0);
+    }
+	for(i=strlen(filename)-1; filename[i]!='/'; i--){
+        if(filename[i] == '/'){
+            break;
+        }
+    }
+    strcpy(filename, filename+i+1);
+    fp2 = fopen(filename, "w");
+    if(fp2==NULL){
+        perror("Error in creating file.");
+    }
+    c = fgetc(fp);
+    while (c != EOF){
+        fputc(c, fp2);
+        c = fgetc(fp);
+    }
+    fseek(fp, 0L, SEEK_END);
+	size = ftell(fp);
+	sprintf(fsize, " %d",size);
+    strcpy(msg, "200 Byte test file retrieved by server and was saved\n");
+    insertString(msg, fsize, 4);
+	send(sockfd, msg, strlen(msg), 0);
+  
+    fclose(fp);
+    fclose(fp2);
+}
 
 void list_files(int fd) {
   DIR * d;
@@ -83,6 +122,7 @@ void list_files(int fd) {
       }
     }
     closedir(d);
+    send(fd, ".\n", 3, 0);
   }
 }
 int is_authenticated(int fd, char uFile[]) {
@@ -125,8 +165,7 @@ int is_authenticated(int fd, char uFile[]) {
       };
       char line[SIZE] = {
         0
-      }, * ptr = NULL;
-      //	for password thingy, remember                                              
+      }, * ptr = NULL;                                              
       if (NULL == (fp = fopen(uFile, "r"))) {
         perror("Error opening the file.\n");
         exit(EXIT_FAILURE);
@@ -159,7 +198,7 @@ void do_job(int fd) {
   int length, rcnt, condition;
   char recvbuf[DEFAULT_BUFLEN], bmsg[DEFAULT_BUFLEN];
   int recvbuflen = DEFAULT_BUFLEN, x;
-  char errormsg[512];
+  char msg[512];
   FILE * fp;
   char username[DEFAULT_BUFLEN];
   char password[DEFAULT_BUFLEN];
@@ -175,7 +214,7 @@ void do_job(int fd) {
       count++;
     }
     char recvcmd[4], recvcmdGET[3];
-    char recvfilename[DEFAULT_BUFLEN];
+    char *recvfilename;
     safe_strcpy(recvcmd, count, recvstring);
     safe_strcpy(recvfilename, strlen(recvstring) - (count + 2), recvstring + count + 1);
 
@@ -185,11 +224,12 @@ void do_job(int fd) {
     } else if (rcnt > 0 && strcmp(recvcmd, "GET") == 0) {
       fp = fopen(recvfilename, "r");
       if (fp == NULL) {
-        strcpy(errormsg, "404  not found\n");
-        insertString(errormsg, recvfilename, 5);
-        send(fd, errormsg, strlen(errormsg), 0);
+        strcpy(msg, "404  not found\n");
+        insertString(msg, recvfilename, 5);
+        send(fd, msg, strlen(msg), 0);
       } else {
         send_file(fp, fd);
+        send(fd, "\r\n.\r\n", 5, 0);
         memset(recvcmd, 0, strlen(recvcmd));
       }
       if (rcnt < 0) {
@@ -197,24 +237,26 @@ void do_job(int fd) {
         close(fd);
         break;
       }
-    } else if (rcnt > 0 && strcmp(recvcmd, "DEL") == 0) {
+    }else if (rcnt>0 && strcmp(recvcmd,"PUT")==0){
+    	put_file(fd, recvfilename); 	
+	}else if (rcnt > 0 && strcmp(recvcmd, "DEL") == 0) {
       if (remove(recvfilename) == 0) {
-        strcpy(errormsg, "200  deleted\n");
-        insertString(errormsg, recvfilename, 5);
-        send(fd, errormsg, strlen(errormsg), 0);
+        strcpy(msg, "200  deleted\n");
+        insertString(msg, recvfilename, 5);
+        send(fd, msg, strlen(msg), 0);
       } else {
-        strcpy(errormsg, "404  not found\n");
-        insertString(errormsg, recvfilename, 5);
-        send(fd, errormsg, strlen(errormsg), 0);
+        strcpy(msg, "404  not found\n");
+        insertString(msg, recvfilename, 5);
+        send(fd, msg, strlen(msg), 0);
       }
     } else if (rcnt > 0 && strcmp(recvcmd, "QUIT") == 0) {
-      strcpy(errormsg, "Goodbye!\n");
-      send(fd, errormsg, strlen(errormsg), 0);
+      strcpy(msg, "Goodbye!\n");
+      send(fd, msg, strlen(msg), 0);
       close(fd);
       printf("Child finished their job!\n");
     } else {
-      strcpy(errormsg, "404 Enter a valid command\n");
-      send(fd, errormsg, strlen(errormsg), 0);
+      strcpy(msg, "404 Enter a valid command\n");
+      send(fd, msg, strlen(msg), 0);
     }
 
   } while (rcnt > 0);
@@ -318,8 +360,6 @@ int main() {
         do_job(fd);
       } else
         send(fd, "400 User not found\n", 19, 0);
-      //      printf("Child finished their job!\n");
-      //      close(fd);
       exit(0);
     }
   }
